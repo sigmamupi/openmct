@@ -27,7 +27,8 @@ define([
     '../../platform/features/autoflow/plugin',
     './timeConductor/plugin',
     '../../example/imagery/plugin',
-    '../../platform/import-export/bundle'
+    '../../platform/import-export/bundle',
+    './ladTable/plugin'
 ], function (
     _,
     UTCTimeSystem,
@@ -35,7 +36,8 @@ define([
     AutoflowPlugin,
     TimeConductorPlugin,
     ExampleImagery,
-    ImportExport
+    ImportExport,
+    LADTable,
 ) {
     var bundleMap = {
         CouchDB: 'platform/persistence/couch',
@@ -120,6 +122,8 @@ define([
     };
 
     plugins.ExampleImagery = ExampleImagery;
+
+    plugins.LADTable = LADTable;
 
     return plugins;
 });
