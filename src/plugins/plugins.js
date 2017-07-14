@@ -37,7 +37,7 @@ define([
     TimeConductorPlugin,
     ExampleImagery,
     ImportExport,
-    LADTable,
+    LADTable
 ) {
     var bundleMap = {
         CouchDB: 'platform/persistence/couch',
