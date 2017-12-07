@@ -56,7 +56,8 @@ define(
             this.subscriptions = [];
             this.openmct = openmct;
             this.$scope = $scope;
-
+            this.$q = $q;
+            this.dialogService = dialogService;
             this.gridSize = $scope.domainObject && $scope.domainObject.getModel().layoutGrid;
 
             var self = this;
@@ -87,9 +88,14 @@ define(
 
             // Update the style for a selected element
             function updateSelectionStyle() {
-                var element = self.selection && self.selection.get();
-                if (element) {
-                    element.style = convertPosition(element);
+                var selection = self.openmct.selection.get()[0];
+                
+                if (selection) {
+                    var element = selection.context.elementProxy;
+
+                    if (element) {
+                        element.style = convertPosition(element);
+                    }
                 }
             }
 
@@ -138,25 +144,26 @@ define(
             function refreshElements() {
                 // Cache selection; we are instantiating new proxies
                 // so we may want to restore this.
-                var selected = self.selection && self.selection.get(),
+                var selected = self.openmct.selection.get()[0],
                     elements = (($scope.configuration || {}).elements || []),
                     index = -1; // Start with a 'not-found' value
 
                 // Find the selection in the new array
-                if (selected !== undefined) {
-                    index = elements.indexOf(selected.element);
-                }
+                // if (selected !== undefined) {
+                //     index = elements.indexOf(selected.context.elementProxy.element);
+                // }
 
                 // Create the new proxies...
                 self.elementProxies = elements.map(makeProxyElement);
 
+                // TODO:
                 // Clear old selection, and restore if appropriate
-                if (self.selection) {
-                    self.selection.deselect();
-                    if (index > -1) {
-                        self.select(self.elementProxies[index]);
-                    }
-                }
+                // if (self.selection) {
+                //     self.selection.deselect();
+                //     if (index > -1) {
+                //         self.select(self.elementProxies[index]);
+                //     }
+                // }
 
                 // Finally, rebuild lists of elements by id to
                 // facilitate faster update when new telemetry comes in.
@@ -226,7 +233,8 @@ define(
                 $scope.configuration.elements.push(element);
                 // Refresh displayed elements
                 refreshElements();
-                // Select the newly-added element
+                // TODO:
+                // Select the newly-added element                
                 self.select(
                     self.elementProxies[self.elementProxies.length - 1]
                 );
@@ -263,21 +271,26 @@ define(
                 self.getTelemetry($scope.domainObject);
             }
 
+            function setSelection(selectable) {
+                var selection = selectable[0];
+
+                if (selection.context.oldItem && !self.parentSelected) {
+                    self.parentSelected = true;
+                    selection.context.proxy = new FixedProxy(addElement, $q, dialogService);
+                    openmct.selection.select(selection);
+                }
+                
+                var element = selection.context.elementProxy;
+                if (element) {
+                    self.mvHandle = self.generateDragHandle(element);
+                    self.resizeHandles = self.generateDragHandles(element);
+                }
+            }
+
             this.elementProxies = [];
             this.generateDragHandle = generateDragHandle;
             this.generateDragHandles = generateDragHandles;
-
-            // Track current selection state
-            $scope.$watch("selection", function (selection) {
-                this.selection = selection;
-
-                // Expose the view's selection proxy
-                if (this.selection) {
-                    this.selection.proxy(
-                        new FixedProxy(addElement, $q, dialogService)
-                    );
-                }
-            }.bind(this));
+            this.parentSelected = false;
 
             // Detect changes to grid size
             $scope.$watch("model.layoutGrid", updateElementPositions);
@@ -298,10 +311,13 @@ define(
             $scope.$on("$destroy", function () {
                 self.unsubscribe();
                 self.openmct.time.off("bounds", updateDisplayBounds);
+                self.openmct.selection.off("change", setSelection);
             });
 
             // Respond to external bounds changes
             this.openmct.time.on("bounds", updateDisplayBounds);
+
+            this.openmct.selection.on('change', setSelection);
         }
 
         /**
@@ -495,40 +511,30 @@ define(
          * Check if the element is currently selected, or (if no
          * argument is supplied) get the currently selected element.
          * @returns {boolean} true if selected
-         */
+         */         
         FixedController.prototype.selected = function (element) {
-            var selection = this.selection;
-            return selection && ((arguments.length > 0) ?
-                    selection.selected(element) : selection.get());
+            var selection = this.openmct.selection.get()[0];            
+            return (selection && selection.context.elementProxy) ? true : false;
         };
 
-        /**
-         * Set the active user selection in this view.
-         * @param element the element to select
-         */
-        FixedController.prototype.select = function select(element, event) {
-            if (event) {
-                event.stopPropagation();
-            }
-
-            if (this.selection) {
-                // Update selection...
-                this.selection.select(element);
-                // ...as well as move, resize handles
-                this.mvHandle = this.generateDragHandle(element);
-                this.resizeHandles = this.generateDragHandles(element);
-            }
+        FixedController.prototype.getSelectedElementStyle = function () {
+            var selection = this.openmct.selection.get()[0];            
+            return (selection && selection.context.elementProxy) ? selection.context.elementProxy.style : undefined;
         };
 
         /**
          * Clear the current user selection.
          */
-        FixedController.prototype.clearSelection = function () {
-            if (this.selection) {
-                this.selection.deselect();
-                this.resizeHandles = [];
-                this.mvHandle = undefined;
+        FixedController.prototype.clearSelection = function ($event) {
+            if (this.dragInProgress) {
+                if ($event) {
+                    $event.stopPropagation();
+                }
+                return;
             }
+            this.parentSelected = false;
+            this.resizeHandles = [];
+            this.mvHandle = undefined;
         };
 
         /**
@@ -546,6 +552,20 @@ define(
          */
         FixedController.prototype.moveHandle = function () {
             return this.mvHandle;
+        };
+
+        /**
+         * Gets the selection context.
+         *
+         * @param elementProxy the element proxy
+         * @returns {object} the context object which includes
+         *                  elementProxy and proxy
+         */
+        FixedController.prototype.getContext = function (elementProxy) {
+            return {
+                elementProxy: elementProxy,
+                toolbar: elementProxy
+            };
         };
 
         return FixedController;
